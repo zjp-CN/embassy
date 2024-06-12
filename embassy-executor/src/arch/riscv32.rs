@@ -58,7 +58,11 @@ mod thread {
 
             loop {
                 unsafe {
+                    #[cfg(feature = "log")]
+                    log::info!("[embassy-executor] before poll");
                     self.inner.poll();
+                    #[cfg(feature = "log")]
+                    log::info!("[embassy-executor] after poll");
                     // we do not care about race conditions between the load and store operations, interrupts
                     //will only set this value to true.
                     critical_section::with(|_| {

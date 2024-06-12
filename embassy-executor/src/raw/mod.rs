@@ -19,7 +19,7 @@ mod state;
 #[cfg(feature = "integrated-timers")]
 mod timer_queue;
 pub(crate) mod util;
-#[cfg_attr(feature = "turbowakers", path = "waker_turbo.rs")]
+// #[cfg_attr(feature = "turbowakers", path = "waker_turbo.rs")]
 mod waker;
 
 use core::future::Future;
@@ -159,6 +159,8 @@ impl<F: Future + 'static> TaskStorage<F> {
         match future.poll(&mut cx) {
             Poll::Ready(_) => {
                 this.future.drop_in_place();
+                #[cfg(feature = "log")]
+                debug!("[embassy-executor] despawn");
                 this.raw.state.despawn();
 
                 #[cfg(feature = "integrated-timers")]
@@ -351,12 +353,16 @@ impl SyncExecutor {
         trace::task_ready_begin(task.as_ptr() as u32);
 
         if self.run_queue.enqueue(task) {
+            #[cfg(feature = "log")]
+            debug!("[embassy-executor] (run_queue) was empty queue: enqueue the given task and call pend");
             self.pender.pend();
         }
     }
 
     #[cfg(feature = "integrated-timers")]
     fn alarm_callback(ctx: *mut ()) {
+        #[cfg(feature = "log")]
+        log::info!("[embassy-executor] alarm_callback + pend");
         let this: &Self = unsafe { &*(ctx as *const Self) };
         this.pender.pend();
     }
@@ -384,12 +390,18 @@ impl SyncExecutor {
                 .dequeue_expired(embassy_time_driver::now(), wake_task_no_pend);
 
             self.run_queue.dequeue_all(|p| {
+                #[cfg(feature = "log")]
+                log::info!("[embassy-executor] (dequeue_all): poll a task");
                 let task = p.header();
 
                 #[cfg(feature = "integrated-timers")]
                 task.expires_at.set(u64::MAX);
 
+                #[cfg(feature = "log")]
+                debug!("[embassy-executor] (state) (run_dequeue): unmark run-queued");
                 if !task.state.run_dequeue() {
+                    #[cfg(feature = "log")]
+                    debug!("[embassy-executor] (state) (run_dequeue) (not spawned any more): return from poll");
                     // If task is not running, ignore it. This can happen in the following scenario:
                     //   - Task gets dequeued, poll starts
                     //   - While task is being polled, it gets woken. It gets placed in the queue.
@@ -541,6 +553,8 @@ impl Executor {
 pub fn wake_task(task: TaskRef) {
     let header = task.header();
     if header.state.run_enqueue() {
+        #[cfg(feature = "log")]
+        debug!("[embassy-executor] (state) spawn but not queued: wake_task run_enqueue");
         // We have just marked the task as scheduled, so enqueue it.
         unsafe {
             let executor = header.executor.get().unwrap_unchecked();

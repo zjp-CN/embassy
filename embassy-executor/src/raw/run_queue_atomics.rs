@@ -48,6 +48,9 @@ impl RunQueue {
     pub(crate) unsafe fn enqueue(&self, task: TaskRef) -> bool {
         let mut was_empty = false;
 
+        #[cfg(feature = "log")]
+        debug!("[embassy-executor] (enqueue) prepend a task");
+
         self.head
             .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |prev| {
                 was_empty = prev.is_null();
@@ -69,11 +72,14 @@ impl RunQueue {
     /// and will be processed by the *next* call to `dequeue_all`, *not* the current one.
     pub(crate) fn dequeue_all(&self, on_task: impl Fn(TaskRef)) {
         // Atomically empty the queue.
+        #[cfg(feature = "log")]
+        debug!("[embassy-executor] empty the queue");
         let ptr = self.head.swap(ptr::null_mut(), Ordering::AcqRel);
 
         // safety: the pointer is either null or valid
         let mut next = unsafe { NonNull::new(ptr).map(|ptr| TaskRef::from_ptr(ptr.as_ptr())) };
 
+        let mut idx = 0u8;
         // Iterate the linked list of tasks that were previously in the queue.
         while let Some(task) = next {
             // If the task re-enqueues itself, the `next` pointer will get overwritten.
@@ -81,7 +87,10 @@ impl RunQueue {
             // safety: there are no concurrent accesses to `next`
             next = unsafe { task.header().run_queue_item.next.get() };
 
+            #[cfg(feature = "log")]
+            debug!("[embassy-executor] handle task {idx}");
             on_task(task);
+            idx += 1;
         }
     }
 }
