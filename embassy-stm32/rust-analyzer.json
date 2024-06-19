@@ -1,0 +1,6 @@
+{
+  "rust-analyzer.cargo.features": [
+    "time-driver-tim1",
+    "stm32c011d6"
+  ]
+}
